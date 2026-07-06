@@ -15,12 +15,17 @@
     <span class="brand-name">Task<em>Torpedo</em></span>
   </div>
   <nav class="date-nav" aria-label="Datum wählen">
-    <button class="icon-btn" id="prevDay" title="Vorheriger Tag" aria-label="Vorheriger Tag">‹</button>
+    <button class="icon-btn" id="prevDay" title="Zurück" aria-label="Zurück">‹</button>
     <button class="date-pill" id="datePill" title="Zu heute springen">
       <span id="dateLabel">…</span>
     </button>
-    <button class="icon-btn" id="nextDay" title="Nächster Tag" aria-label="Nächster Tag">›</button>
+    <button class="icon-btn" id="nextDay" title="Weiter" aria-label="Weiter">›</button>
   </nav>
+  <div class="view-toggle" role="group" aria-label="Ansicht wählen">
+    <button class="seg" id="viewDayBtn">Tag</button>
+    <button class="seg" id="viewWeekBtn">Woche</button>
+  </div>
+  <span id="awakeBadge" class="awake-badge" title="Display bleibt wach" hidden>☕</span>
   <button class="icon-btn gear" id="openSettings" title="Eltern-Bereich" aria-label="Eltern-Bereich">⚙️</button>
 </header>
 
@@ -87,6 +92,18 @@
         </div>
         <label class="switch">
           <input type="checkbox" id="confettiToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="option-row">
+        <div>
+          <strong>Display wach halten</strong>
+          <p class="muted">Verhindert, dass Wandtablets (z. B. Echo Show) zum
+          Startbildschirm zurückwechseln. Gilt nur für dieses Gerät –
+          ein ☕ oben zeigt an, dass es aktiv ist.</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="keepAwakeToggle">
           <span class="slider"></span>
         </label>
       </div>

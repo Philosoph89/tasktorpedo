@@ -17,7 +17,9 @@ const COLORS = ["#6366f1", "#ec4899", "#10b981", "#f59e0b", "#3b82f6", "#a855f7"
 // ===== State =====
 
 let currentDate = todayIso();
+let viewMode = localStorage.getItem("tt-view") === "week" ? "week" : "day";
 let dayData = null;          // Antwort von api/day
+let weekData = null;         // Antwort von api/week
 let adminData = null;        // Antwort von api/admin
 let parentPin = sessionStorage.getItem("tt-pin") || null;
 let celebrated = new Set();  // kidIds, für die heute schon Konfetti lief
@@ -49,6 +51,21 @@ function formatDate(iso) {
   return fmt;
 }
 
+function mondayOf(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return shiftDate(iso, -((d.getDay() + 6) % 7)); // getDay(): So=0 → Mo=Start
+}
+
+function formatWeek(startIso) {
+  const endIso = shiftDate(startIso, 6);
+  const opts = { day: "numeric", month: "numeric" };
+  const from = new Date(startIso + "T12:00:00").toLocaleDateString("de-DE", opts);
+  const to = new Date(endIso + "T12:00:00").toLocaleDateString("de-DE", opts);
+  const prefix = startIso === mondayOf(todayIso()) ? "Diese Woche" :
+    startIso === mondayOf(shiftDate(todayIso(), 7)) ? "Nächste Woche" : "Woche";
+  return `${prefix} · ${from} – ${to}`;
+}
+
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json" };
   if (parentPin) headers["X-Parent-Pin"] = parentPin;
@@ -76,12 +93,31 @@ function escapeHtml(s) {
   }[c]));
 }
 
-// ===== Tagesansicht =====
+// ===== Laden (Tag / Woche) =====
 
-async function loadDay() {
-  dayData = await api(`api/day?date=${currentDate}`);
-  renderBoard();
+let hasPinFlag = false;
+
+async function loadView() {
+  if (viewMode === "day") {
+    dayData = await api(`api/day?date=${currentDate}`);
+    hasPinFlag = dayData.hasPin;
+    renderBoard();
+  } else {
+    weekData = await api(`api/week?start=${mondayOf(currentDate)}`);
+    hasPinFlag = weekData.hasPin;
+    renderWeek();
+  }
 }
+
+function sortTasks(tasks) {
+  return [...tasks].sort((a, b) => {
+    if (!!a.time !== !!b.time) return a.time ? -1 : 1;
+    if (a.time !== b.time) return (a.time || "").localeCompare(b.time || "");
+    return a.title.localeCompare(b.title, "de");
+  });
+}
+
+// ===== Tagesansicht =====
 
 function renderBoard() {
   const label = $("#dateLabel");
@@ -91,6 +127,7 @@ function renderBoard() {
   const board = $("#board");
   const empty = $("#emptyState");
   board.innerHTML = "";
+  board.className = "board";
 
   if (!dayData.kids.length) {
     empty.hidden = false;
@@ -136,11 +173,7 @@ function renderKidColumn(kid) {
     return col;
   }
 
-  const sorted = [...kid.tasks].sort((a, b) => {
-    if (!!a.time !== !!b.time) return a.time ? -1 : 1;
-    if (a.time !== b.time) return (a.time || "").localeCompare(b.time || "");
-    return a.title.localeCompare(b.title, "de");
-  });
+  const sorted = sortTasks(kid.tasks);
 
   let dividerShown = false;
   for (const task of sorted) {
@@ -215,27 +248,147 @@ async function toggleTask(kid, task) {
       method: "POST",
       body: JSON.stringify({ taskId: task.id, date: currentDate }),
     });
-    await loadDay();
+    await loadView();
     if (res.done) {
       const updated = dayData.kids.find((k) => k.id === kid.id);
       const allDone = updated && updated.tasks.length &&
         updated.tasks.every((t) => t.done);
-      const key = `${kid.id}:${currentDate}`;
-      if (allDone && !celebrated.has(key) && confettiEnabled()) {
-        celebrated.add(key);
-        fireConfetti();
-      }
+      maybeCelebrate(kid.id, currentDate, allDone);
     }
   } catch {
     toast("Hoppla, das hat nicht geklappt 😕");
   }
 }
 
-// ===== Datum-Navigation =====
+function maybeCelebrate(kidId, dateIso, allDone) {
+  const key = `${kidId}:${dateIso}`;
+  if (allDone && !celebrated.has(key) && confettiEnabled()) {
+    celebrated.add(key);
+    fireConfetti();
+  }
+}
 
-$("#prevDay").addEventListener("click", () => { currentDate = shiftDate(currentDate, -1); loadDay(); });
-$("#nextDay").addEventListener("click", () => { currentDate = shiftDate(currentDate, 1); loadDay(); });
-$("#datePill").addEventListener("click", () => { currentDate = todayIso(); loadDay(); });
+// ===== Wochenansicht =====
+
+function renderWeek() {
+  const label = $("#dateLabel");
+  label.textContent = formatWeek(weekData.start);
+  label.classList.toggle("not-today", weekData.start !== mondayOf(todayIso()));
+
+  const board = $("#board");
+  const empty = $("#emptyState");
+  board.innerHTML = "";
+  board.className = "week-wrap";
+
+  if (!weekData.kids.length) {
+    empty.hidden = false;
+    board.hidden = true;
+    return;
+  }
+  empty.hidden = true;
+  board.hidden = false;
+
+  const today = todayIso();
+  const grid = document.createElement("div");
+  grid.className = "week-grid";
+
+  const corner = document.createElement("div");
+  corner.className = "wg-corner";
+  grid.appendChild(corner);
+
+  weekData.days.forEach((iso, i) => {
+    const d = new Date(iso + "T12:00:00");
+    const head = document.createElement("div");
+    head.className = "wg-head" + (iso === today ? " today" : "");
+    head.innerHTML = `${WEEKDAYS[i]}<span class="wg-date">${d.toLocaleDateString("de-DE", { day: "numeric", month: "numeric" })}</span>`;
+    grid.appendChild(head);
+  });
+
+  for (const kid of weekData.kids) {
+    const kc = document.createElement("div");
+    kc.className = "wg-kid";
+    const streakBadge = kid.streak >= 2
+      ? `<span class="badge streak">🔥 ${kid.streak}</span>` : "";
+    kc.innerHTML = `
+      <div class="kid-avatar" style="background:${kid.color}">${kid.emoji}</div>
+      <div class="wg-kid-name">${escapeHtml(kid.name)}</div>
+      <div class="kid-badges"><span class="badge stars">⭐ ${kid.pointsTotal}</span>${streakBadge}</div>`;
+    grid.appendChild(kc);
+
+    kid.days.forEach((tasks, i) => {
+      const iso = weekData.days[i];
+      const cell = document.createElement("div");
+      cell.className = "wg-cell" + (iso === today ? " today" : "");
+      const sorted = sortTasks(tasks);
+      if (!sorted.length) {
+        cell.innerHTML = `<span class="wg-empty">·</span>`;
+      } else {
+        for (const t of sorted) cell.appendChild(renderWeekTask(kid, t, iso));
+        if (sorted.every((t) => t.done)) {
+          const done = document.createElement("div");
+          done.className = "wg-alldone";
+          done.textContent = "🎉 Alles erledigt";
+          cell.appendChild(done);
+        }
+      }
+      grid.appendChild(cell);
+    });
+  }
+
+  board.appendChild(grid);
+}
+
+function renderWeekTask(kid, task, dateIso) {
+  const cat = CATEGORIES[task.category] || CATEGORIES.haushalt;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "wtask" + (task.done ? " done" : "");
+  btn.style.setProperty("--cat-color", `var(--cat-${task.category})`);
+  btn.title = `${cat.icon} ${cat.label} · +${task.points} ⭐${task.note ? " · " + task.note : ""}`;
+  btn.setAttribute("aria-pressed", String(task.done));
+  btn.innerHTML = `
+    <span class="wt-check">${task.done ? "✓" : ""}</span>
+    <span class="wt-body">
+      <span class="wt-title">${escapeHtml(task.title)}</span>
+      ${task.time ? `<span class="wt-time">🕐 ${task.time}</span>` : ""}
+    </span>`;
+  btn.addEventListener("click", async () => {
+    try {
+      const res = await api("api/toggle", {
+        method: "POST",
+        body: JSON.stringify({ taskId: task.id, date: dateIso }),
+      });
+      await loadView();
+      if (res.done && dateIso === todayIso()) {
+        const k = weekData.kids.find((x) => x.id === kid.id);
+        const dayTasks = k ? k.days[weekData.days.indexOf(dateIso)] : [];
+        maybeCelebrate(kid.id, dateIso, dayTasks.length && dayTasks.every((t) => t.done));
+      }
+    } catch {
+      toast("Hoppla, das hat nicht geklappt 😕");
+    }
+  });
+  return btn;
+}
+
+// ===== Navigation & Ansicht-Umschalter =====
+
+const NAV_STEP = () => (viewMode === "week" ? 7 : 1);
+
+$("#prevDay").addEventListener("click", () => { currentDate = shiftDate(currentDate, -NAV_STEP()); loadView(); });
+$("#nextDay").addEventListener("click", () => { currentDate = shiftDate(currentDate, NAV_STEP()); loadView(); });
+$("#datePill").addEventListener("click", () => { currentDate = todayIso(); loadView(); });
+
+function setViewMode(mode) {
+  viewMode = mode;
+  localStorage.setItem("tt-view", mode);
+  $("#viewDayBtn").classList.toggle("active", mode === "day");
+  $("#viewWeekBtn").classList.toggle("active", mode === "week");
+  loadView().catch(() => toast("Server nicht erreichbar 😕"));
+}
+
+$("#viewDayBtn").addEventListener("click", () => setViewMode("day"));
+$("#viewWeekBtn").addEventListener("click", () => setViewMode("week"));
 
 // ===== Eltern-Bereich (PIN + Settings) =====
 
@@ -243,7 +396,7 @@ $("#openSettings").addEventListener("click", openParentArea);
 $("#emptyStart").addEventListener("click", openParentArea);
 
 async function openParentArea() {
-  if (dayData?.hasPin && !parentPin) {
+  if (hasPinFlag && !parentPin) {
     $("#pinInput").value = "";
     $("#pinError").hidden = true;
     $("#pinDialog").showModal();
@@ -304,7 +457,7 @@ document.querySelectorAll("dialog.modal").forEach((dlg) => {
     if (e.target === dlg) dlg.close();
   });
 });
-$("#settingsDialog").addEventListener("close", () => loadDay());
+$("#settingsDialog").addEventListener("close", () => loadView());
 
 // ===== Kinder verwalten =====
 
@@ -653,6 +806,106 @@ $("#confettiToggle").addEventListener("change", (e) => {
   localStorage.setItem("tt-confetti", e.target.checked ? "on" : "off");
 });
 
+// ===== Display wach halten (Kiosk-Geräte wie Echo Show / Wandtablets) =====
+//
+// Zwei Mechanismen parallel:
+// 1. Screen Wake Lock API – verhindert das Abschalten des Displays.
+// 2. Stumme Audio-Schleife – hält auf Fire-OS-Geräten (Echo Show) die
+//    "Medienwiedergabe aktiv"-Erkennung am Leben, ohne die der Silk-Browser
+//    nach kurzer Zeit zum Alexa-Homescreen zurückwechselt.
+// Die Einstellung gilt pro Gerät (localStorage).
+
+const KEEP_AWAKE_KEY = "tt-keepawake";
+let wakeLockSentinel = null;
+let awakeAudio = null;
+
+function keepAwakeEnabled() {
+  return localStorage.getItem(KEEP_AWAKE_KEY) === "on";
+}
+
+function silentWavUri() {
+  // 1 Sekunde 8-Bit-Mono-Stille (8 kHz), zur Laufzeit generiert
+  const rate = 8000;
+  const size = 44 + rate;
+  const buf = new Uint8Array(size);
+  const dv = new DataView(buf.buffer);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) buf[o + i] = s.charCodeAt(i); };
+  str(0, "RIFF"); dv.setUint32(4, size - 8, true); str(8, "WAVEfmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate, true);
+  dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+  str(36, "data"); dv.setUint32(40, rate, true);
+  buf.fill(128, 44); // 128 = Nulllinie bei 8-Bit-PCM
+  let bin = "";
+  buf.forEach((b) => { bin += String.fromCharCode(b); });
+  return "data:audio/wav;base64," + btoa(bin);
+}
+
+async function acquireWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request("screen");
+    wakeLockSentinel.addEventListener("release", () => {
+      wakeLockSentinel = null;
+      // Der Browser gibt den Lock z. B. beim Tab-Wechsel frei → neu anfordern
+      if (keepAwakeEnabled() && document.visibilityState === "visible") {
+        acquireWakeLock();
+      }
+    });
+  } catch {
+    // Wake Lock nicht verfügbar/erlaubt – Audio-Schleife bleibt als Fallback
+  }
+}
+
+function startAwakeAudio() {
+  if (!awakeAudio) {
+    awakeAudio = new Audio(silentWavUri());
+    awakeAudio.loop = true;
+    awakeAudio.muted = true; // stumm → Autoplay ist erlaubt
+    awakeAudio.setAttribute("playsinline", "");
+  }
+  awakeAudio.play().catch(() => {
+    // Autoplay blockiert → beim ersten Antippen erneut starten
+    document.addEventListener("pointerdown", () => {
+      if (keepAwakeEnabled()) awakeAudio.play().catch(() => {});
+    }, { once: true });
+  });
+}
+
+function startKeepAwake() {
+  acquireWakeLock();
+  startAwakeAudio();
+  $("#awakeBadge").hidden = false;
+}
+
+function stopKeepAwake() {
+  if (wakeLockSentinel) {
+    wakeLockSentinel.release().catch(() => {});
+    wakeLockSentinel = null;
+  }
+  if (awakeAudio) awakeAudio.pause();
+  $("#awakeBadge").hidden = true;
+}
+
+$("#keepAwakeToggle").checked = keepAwakeEnabled();
+$("#keepAwakeToggle").addEventListener("change", (e) => {
+  localStorage.setItem(KEEP_AWAKE_KEY, e.target.checked ? "on" : "off");
+  if (e.target.checked) {
+    startKeepAwake();
+    toast("Display bleibt wach ☕");
+  } else {
+    stopKeepAwake();
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && keepAwakeEnabled() && !wakeLockSentinel) {
+    acquireWakeLock();
+  }
+});
+
+if (keepAwakeEnabled()) startKeepAwake();
+
 // ===== Konfetti =====
 
 function fireConfetti() {
@@ -697,14 +950,16 @@ function fireConfetti() {
 
 setInterval(() => {
   if (document.visibilityState === "visible" && !document.querySelector("dialog[open]")) {
-    loadDay().catch(() => {});
+    loadView().catch(() => {});
   }
 }, 60_000);
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") loadDay().catch(() => {});
+  if (document.visibilityState === "visible") loadView().catch(() => {});
 });
 
 // ===== Start =====
 
-loadDay().catch(() => toast("Server nicht erreichbar 😕"));
+$("#viewDayBtn").classList.toggle("active", viewMode === "day");
+$("#viewWeekBtn").classList.toggle("active", viewMode === "week");
+loadView().catch(() => toast("Server nicht erreichbar 😕"));

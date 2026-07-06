@@ -130,22 +130,27 @@ def kid_streak(data, kid_id, until):
     return streak
 
 
+def serialize_task(t, done_map):
+    return {
+        "id": t["id"],
+        "title": t["title"],
+        "category": t.get("category", "haushalt"),
+        "time": t.get("time") or None,
+        "points": int(t.get("points", 10)),
+        "note": t.get("note") or None,
+        "done": t["id"] in done_map,
+    }
+
+
 def build_day_view(data, day):
     day_iso = day.isoformat()
     done_map = completions_for(data, day_iso)
     kids = []
     for kid in data["kids"]:
-        tasks = []
-        for t in kid_day_tasks(data, kid["id"], day):
-            tasks.append({
-                "id": t["id"],
-                "title": t["title"],
-                "category": t.get("category", "haushalt"),
-                "time": t.get("time") or None,
-                "points": int(t.get("points", 10)),
-                "note": t.get("note") or None,
-                "done": t["id"] in done_map,
-            })
+        tasks = [
+            serialize_task(t, done_map)
+            for t in kid_day_tasks(data, kid["id"], day)
+        ]
         total, week = kid_points(data, kid["id"])
         kids.append({
             "id": kid["id"],
@@ -158,6 +163,38 @@ def build_day_view(data, day):
             "streak": kid_streak(data, kid["id"], day),
         })
     return {"date": day_iso, "kids": kids, "hasPin": bool(data["settings"].get("pin"))}
+
+
+def build_week_view(data, start):
+    """Wochenansicht: `start` ist der Montag; 7 Tage, Aufgaben pro Kind und Tag."""
+    days = [start + timedelta(days=i) for i in range(7)]
+    done_maps = [completions_for(data, d.isoformat()) for d in days]
+    kids = []
+    for kid in data["kids"]:
+        total, week = kid_points(data, kid["id"])
+        day_lists = []
+        for d, done_map in zip(days, done_maps):
+            tasks = [
+                serialize_task(t, done_map)
+                for t in kid_day_tasks(data, kid["id"], d)
+            ]
+            day_lists.append(tasks)
+        kids.append({
+            "id": kid["id"],
+            "name": kid["name"],
+            "emoji": kid.get("emoji", "🙂"),
+            "color": kid.get("color", "#6366f1"),
+            "days": day_lists,
+            "pointsTotal": total,
+            "pointsWeek": week,
+            "streak": kid_streak(data, kid["id"], date.today()),
+        })
+    return {
+        "start": start.isoformat(),
+        "days": [d.isoformat() for d in days],
+        "kids": kids,
+        "hasPin": bool(data["settings"].get("pin")),
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -236,6 +273,12 @@ class Handler(BaseHTTPRequestHandler):
             with _lock:
                 data = load_data()
                 self.send_json(build_day_view(data, day))
+        elif route == "api/week":
+            anchor = parse_date(self.query().get("start", "")) or date.today()
+            monday = anchor - timedelta(days=anchor.weekday())
+            with _lock:
+                data = load_data()
+                self.send_json(build_week_view(data, monday))
         elif route == "api/admin":
             with _lock:
                 data = load_data()
