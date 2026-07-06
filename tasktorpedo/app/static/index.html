@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TaskTorpedo</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-icon">🚀</span>
+    <span class="brand-name">Task<em>Torpedo</em></span>
+  </div>
+  <nav class="date-nav" aria-label="Datum wählen">
+    <button class="icon-btn" id="prevDay" title="Vorheriger Tag" aria-label="Vorheriger Tag">‹</button>
+    <button class="date-pill" id="datePill" title="Zu heute springen">
+      <span id="dateLabel">…</span>
+    </button>
+    <button class="icon-btn" id="nextDay" title="Nächster Tag" aria-label="Nächster Tag">›</button>
+  </nav>
+  <button class="icon-btn gear" id="openSettings" title="Eltern-Bereich" aria-label="Eltern-Bereich">⚙️</button>
+</header>
+
+<main id="board" class="board" aria-live="polite"></main>
+
+<div id="emptyState" class="empty-state" hidden>
+  <div class="empty-rocket">🚀</div>
+  <h2>Willkommen bei TaskTorpedo!</h2>
+  <p>Lege im Eltern-Bereich Kinder und Aufgaben an –<br>dann geht’s hier ab wie eine Rakete.</p>
+  <button class="btn btn-primary" id="emptyStart">Loslegen</button>
+</div>
+
+<!-- PIN-Abfrage -->
+<dialog id="pinDialog" class="modal modal-sm">
+  <form method="dialog" class="modal-body" id="pinForm">
+    <h3>🔒 Eltern-Bereich</h3>
+    <p class="muted">Bitte PIN eingeben</p>
+    <input type="password" id="pinInput" inputmode="numeric" autocomplete="off"
+           maxlength="8" class="pin-input" placeholder="••••">
+    <p class="form-error" id="pinError" hidden>Falsche PIN – probier’s nochmal.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Öffnen</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Eltern-Bereich -->
+<dialog id="settingsDialog" class="modal modal-lg">
+  <div class="modal-body">
+    <div class="modal-header">
+      <h3>⚙️ Eltern-Bereich</h3>
+      <button class="icon-btn" data-close aria-label="Schließen">✕</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="kids" role="tab">👧 Kinder</button>
+      <button class="tab" data-tab="tasks" role="tab">📝 Aufgaben</button>
+      <button class="tab" data-tab="options" role="tab">🔧 Optionen</button>
+    </div>
+
+    <section class="tab-panel" id="panel-kids" role="tabpanel">
+      <div id="kidList" class="admin-list"></div>
+      <button class="btn btn-primary" id="addKid">+ Kind hinzufügen</button>
+    </section>
+
+    <section class="tab-panel" id="panel-tasks" role="tabpanel" hidden>
+      <div class="task-filter" id="taskFilter"></div>
+      <div id="taskList" class="admin-list"></div>
+      <button class="btn btn-primary" id="addTask">+ Aufgabe hinzufügen</button>
+    </section>
+
+    <section class="tab-panel" id="panel-options" role="tabpanel" hidden>
+      <div class="option-row">
+        <div>
+          <strong>Eltern-PIN</strong>
+          <p class="muted">Schützt diesen Bereich vor neugierigen Kindern.</p>
+        </div>
+        <button class="btn" id="changePin">PIN ändern</button>
+      </div>
+      <div class="option-row">
+        <div>
+          <strong>Konfetti</strong>
+          <p class="muted">Feier-Animation, wenn ein Kind alles geschafft hat.</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="confettiToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </section>
+  </div>
+</dialog>
+
+<!-- Kind anlegen/bearbeiten -->
+<dialog id="kidDialog" class="modal">
+  <form class="modal-body" id="kidForm">
+    <h3 id="kidFormTitle">Kind hinzufügen</h3>
+    <label class="field">
+      <span>Name</span>
+      <input type="text" id="kidName" maxlength="40" required placeholder="z. B. Emma">
+    </label>
+    <label class="field">
+      <span>Avatar</span>
+    </label>
+    <div class="emoji-grid" id="emojiGrid"></div>
+    <label class="field">
+      <span>Farbe</span>
+    </label>
+    <div class="color-grid" id="colorGrid"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-danger" id="deleteKid" hidden>Löschen</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Aufgabe anlegen/bearbeiten -->
+<dialog id="taskDialog" class="modal">
+  <form class="modal-body" id="taskForm">
+    <h3 id="taskFormTitle">Aufgabe hinzufügen</h3>
+    <label class="field">
+      <span>Was ist zu tun?</span>
+      <input type="text" id="taskTitle" maxlength="120" required placeholder="z. B. Zimmer aufräumen">
+    </label>
+    <div class="field">
+      <span>Für wen?</span>
+      <div class="chip-row" id="taskKids"></div>
+    </div>
+    <div class="field">
+      <span>Kategorie</span>
+      <div class="chip-row" id="taskCategory"></div>
+    </div>
+    <div class="field-split">
+      <label class="field">
+        <span>Uhrzeit <small>(optional)</small></span>
+        <input type="time" id="taskTime">
+      </label>
+      <label class="field">
+        <span>Sterne</span>
+        <div class="stepper">
+          <button type="button" class="stepper-btn" data-step="-5">−</button>
+          <input type="number" id="taskPoints" min="0" max="100" step="5" value="10">
+          <button type="button" class="stepper-btn" data-step="5">+</button>
+        </div>
+      </label>
+    </div>
+    <div class="field">
+      <span>Wiederholung</span>
+      <div class="chip-row" id="recPresets">
+        <button type="button" class="chip" data-preset="daily">Täglich</button>
+        <button type="button" class="chip" data-preset="school">Mo–Fr</button>
+        <button type="button" class="chip" data-preset="weekend">Wochenende</button>
+        <button type="button" class="chip" data-preset="once">Einmalig</button>
+      </div>
+      <div class="chip-row weekdays" id="weekdayChips"></div>
+      <input type="date" id="onceDate" hidden>
+    </div>
+    <label class="field">
+      <span>Notiz <small>(optional)</small></span>
+      <input type="text" id="taskNote" maxlength="200" placeholder="z. B. Vokabeln Seite 12">
+    </label>
+    <p class="form-error" id="taskError" hidden></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-danger" id="deleteTask" hidden>Löschen</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- PIN ändern -->
+<dialog id="pinChangeDialog" class="modal modal-sm">
+  <form class="modal-body" id="pinChangeForm">
+    <h3>PIN ändern</h3>
+    <label class="field">
+      <span>Neue PIN <small>(4–8 Ziffern, leer = keine PIN)</small></span>
+      <input type="password" id="newPin" inputmode="numeric" maxlength="8" class="pin-input" autocomplete="off">
+    </label>
+    <p class="form-error" id="pinChangeError" hidden></p>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<canvas id="confetti"></canvas>
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
