@@ -96,6 +96,40 @@ function escapeHtml(s) {
   }[c]));
 }
 
+/** Hübscher Ersatz für window.confirm – löst mit true/false auf.
+ *  Abbrechen, Esc und Klick auf den Hintergrund zählen als "Nein".
+ *  Verlässt sich bewusst NICHT auf das dialog-close-Event (feuert in manchen
+ *  Kiosk-/Embedded-Browsern nicht) – ein Watchdog löst notfalls auf. */
+function askConfirm({ emoji = "❓", title, text = "", okLabel = "OK", danger = false }) {
+  return new Promise((resolve) => {
+    const dlg = $("#confirmDialog");
+    $("#confirmEmoji").textContent = emoji;
+    $("#confirmTitle").textContent = title;
+    $("#confirmText").textContent = text;
+    $("#confirmText").hidden = !text;
+    const ok = $("#confirmOk");
+    ok.textContent = okLabel;
+    ok.className = "btn " + (danger ? "btn-danger" : "btn-primary");
+
+    let settled = false;
+    let watchdog = null;
+    const done = (val) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(watchdog);
+      if (dlg.open) dlg.close();
+      resolve(val);
+    };
+    ok.onclick = () => done(true);
+    $("#confirmCancel").onclick = () => done(false);
+    dlg.oncancel = () => done(false);                                // Esc
+    dlg.onclick = (e) => { if (e.target === dlg) done(false); };     // Backdrop
+    dlg.showModal();
+    // Fallback: wurde der Dialog anderweitig geschlossen → als "Nein" werten
+    watchdog = setInterval(() => { if (!dlg.open) done(false); }, 250);
+  });
+}
+
 // ===== Laden (Tag / Woche) =====
 
 let hasPinFlag = false;
@@ -446,7 +480,13 @@ function renderShop() {
 }
 
 async function redeemReward(kid, reward) {
-  if (!confirm(`${reward.emoji} „${reward.title}" für ${reward.cost} ⭐ einlösen?`)) return;
+  const ok = await askConfirm({
+    emoji: reward.emoji,
+    title: reward.title,
+    text: `Für ${reward.cost} ⭐ einlösen? Danach hast du noch ${kid.stars - reward.cost} ⭐.`,
+    okLabel: "⭐ Einlösen",
+  });
+  if (!ok) return;
   try {
     await api("api/redeem", {
       method: "POST",
@@ -629,7 +669,14 @@ $("#kidForm").addEventListener("submit", async (e) => {
 
 $("#deleteKid").addEventListener("click", async () => {
   const kid = adminData.kids.find((k) => k.id === editingKidId);
-  if (!confirm(`${kid?.name} und alle zugehörigen Aufgaben wirklich löschen?`)) return;
+  const ok = await askConfirm({
+    emoji: kid?.emoji || "🗑️",
+    title: `${kid?.name || "Kind"} löschen?`,
+    text: "Alle zugehörigen Aufgaben werden mit gelöscht.",
+    okLabel: "Löschen",
+    danger: true,
+  });
+  if (!ok) return;
   await api(`api/kids/${editingKidId}`, { method: "DELETE" });
   $("#kidDialog").close();
   adminData = await api("api/admin");
@@ -852,7 +899,15 @@ $("#taskForm").addEventListener("submit", async (e) => {
 });
 
 $("#deleteTask").addEventListener("click", async () => {
-  if (!confirm("Diese Aufgabe wirklich löschen?")) return;
+  const task = adminData.tasks.find((t) => t.id === editingTaskId);
+  const ok = await askConfirm({
+    emoji: "🗑️",
+    title: "Aufgabe löschen?",
+    text: task ? `„${task.title}“ wird für die Zukunft entfernt.` : "",
+    okLabel: "Löschen",
+    danger: true,
+  });
+  if (!ok) return;
   await api(`api/tasks/${editingTaskId}`, { method: "DELETE" });
   $("#taskDialog").close();
   adminData = await api("api/admin");
@@ -901,7 +956,13 @@ function renderRewardAdmin() {
       </div>
       <button type="button" class="btn btn-sm undo-redemption" title="Rückgängig – Sterne zurückgeben">↩️</button>`;
     item.querySelector(".undo-redemption").addEventListener("click", async () => {
-      if (!confirm(`Einlösung zurücknehmen? ${kid?.name || "Das Kind"} bekommt ${r.cost} ⭐ zurück.`)) return;
+      const ok = await askConfirm({
+        emoji: "↩️",
+        title: "Einlösung zurücknehmen?",
+        text: `${kid?.name || "Das Kind"} bekommt ${r.cost} ⭐ zurück.`,
+        okLabel: "Zurückgeben",
+      });
+      if (!ok) return;
       await api(`api/redemptions/${r.id}`, { method: "DELETE" });
       adminData = await api("api/admin");
       renderRewardAdmin();
@@ -946,7 +1007,15 @@ $("#rewardForm").addEventListener("submit", async (e) => {
 });
 
 $("#deleteReward").addEventListener("click", async () => {
-  if (!confirm("Diese Belohnung wirklich löschen?")) return;
+  const reward = adminData.rewards.find((r) => r.id === editingRewardId);
+  const ok = await askConfirm({
+    emoji: reward?.emoji || "🗑️",
+    title: "Belohnung löschen?",
+    text: reward ? `„${reward.title}“ verschwindet aus dem Sterne-Shop.` : "",
+    okLabel: "Löschen",
+    danger: true,
+  });
+  if (!ok) return;
   await api(`api/rewards/${editingRewardId}`, { method: "DELETE" });
   $("#rewardDialog").close();
   adminData = await api("api/admin");

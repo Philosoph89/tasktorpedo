@@ -13,6 +13,10 @@
   HA-Event-Bus für Automationen (z. B. TTS-Durchsage, Licht-Show):
   `tasktorpedo_task_done`, `tasktorpedo_all_done`,
   `tasktorpedo_reward_redeemed` – Beispiele in der Dokumentation
+- ✨ **Schöne Bestätigungs-Dialoge**: alle Sicherheitsabfragen (Belohnung
+  einlösen, Kind/Aufgabe/Belohnung löschen, Einlösung zurücknehmen) nutzen
+  jetzt einen eigenen, zum Design passenden Dialog statt der nüchternen
+  Browser-Einblendung
 
 ## 1.2.0 – 2026-07-06
 
