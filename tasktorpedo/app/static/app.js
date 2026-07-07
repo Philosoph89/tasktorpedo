@@ -13,6 +13,7 @@ const CATEGORIES = {
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const EMOJIS = ["🦊", "🐼", "🦄", "🐸", "🐯", "🦁", "🐨", "🐰", "🐙", "🦖", "🚀", "⭐", "🌈", "⚡", "🎮", "🎨"];
 const COLORS = ["#6366f1", "#ec4899", "#10b981", "#f59e0b", "#3b82f6", "#a855f7", "#ef4444", "#14b8a6"];
+const REWARD_EMOJIS = ["🎁", "🍦", "🍕", "🍿", "🎬", "🎮", "📱", "🧸", "⚽", "🏊", "🎢", "🛝", "🚲", "🍭", "🎳", "💶"];
 
 // ===== State =====
 
@@ -25,6 +26,8 @@ let parentPin = sessionStorage.getItem("tt-pin") || null;
 let celebrated = new Set();  // kidIds, für die heute schon Konfetti lief
 let editingKidId = null;
 let editingTaskId = null;
+let editingRewardId = null;
+let shopKidId = null;
 let taskFilterKid = "all";
 
 const $ = (sel) => document.querySelector(sel);
@@ -150,6 +153,7 @@ function renderKidColumn(kid) {
 
   const streakBadge = kid.streak >= 2
     ? `<span class="badge streak">🔥 ${kid.streak} Tage</span>` : "";
+  const xpPct = Math.min(100, Math.round((kid.levelInto / kid.levelNext) * 100));
 
   col.innerHTML = `
     <header class="kid-header">
@@ -157,14 +161,20 @@ function renderKidColumn(kid) {
       <div class="kid-meta">
         <h2 class="kid-name">${escapeHtml(kid.name)}</h2>
         <div class="kid-badges">
-          <span class="badge stars">⭐ ${kid.pointsTotal}</span>
+          <button type="button" class="badge stars shop-open" title="Sterne-Shop öffnen">⭐ ${kid.stars}</button>
+          <span class="badge level">🏅 Lv. ${kid.level}</span>
           ${streakBadge}
+        </div>
+        <div class="xp-bar" title="Noch ${kid.levelNext - kid.levelInto} ⭐ bis Level ${kid.level + 1}">
+          <div class="xp-fill" style="width:${xpPct}%;background:${kid.color}"></div>
         </div>
       </div>
       ${progressRing(pct, done, total, kid.color)}
     </header>
     <ul class="task-list"></ul>
   `;
+
+  col.querySelector(".shop-open").addEventListener("click", () => openShop(kid.id));
 
   const list = col.querySelector(".task-list");
 
@@ -312,7 +322,12 @@ function renderWeek() {
     kc.innerHTML = `
       <div class="kid-avatar" style="background:${kid.color}">${kid.emoji}</div>
       <div class="wg-kid-name">${escapeHtml(kid.name)}</div>
-      <div class="kid-badges"><span class="badge stars">⭐ ${kid.pointsTotal}</span>${streakBadge}</div>`;
+      <div class="kid-badges">
+        <button type="button" class="badge stars shop-open" title="Sterne-Shop öffnen">⭐ ${kid.stars}</button>
+        <span class="badge level">🏅 Lv. ${kid.level}</span>
+        ${streakBadge}
+      </div>`;
+    kc.querySelector(".shop-open").addEventListener("click", () => openShop(kid.id));
     grid.appendChild(kc);
 
     kid.days.forEach((tasks, i) => {
@@ -369,6 +384,81 @@ function renderWeekTask(kid, task, dateIso) {
     }
   });
   return btn;
+}
+
+// ===== Sterne-Shop (Kind-Ansicht) =====
+
+function viewKids() {
+  return viewMode === "day" ? dayData?.kids : weekData?.kids;
+}
+
+function viewRewards() {
+  return (viewMode === "day" ? dayData?.rewards : weekData?.rewards) || [];
+}
+
+function openShop(kidId) {
+  shopKidId = kidId;
+  renderShop();
+  $("#shopDialog").showModal();
+}
+
+function renderShop() {
+  const kid = (viewKids() || []).find((k) => k.id === shopKidId);
+  if (!kid) return $("#shopDialog").close();
+
+  $("#shopTitle").textContent = `🎁 Sterne-Shop von ${kid.name}`;
+  $("#shopBalance").innerHTML =
+    `<span class="shop-stars">⭐ ${kid.stars}</span> Sterne im Sparschwein`;
+  const xpPct = Math.min(100, Math.round((kid.levelInto / kid.levelNext) * 100));
+  $("#shopLevel").innerHTML = `
+    <span>🏅 Level ${kid.level}</span>
+    <div class="xp-bar"><div class="xp-fill" style="width:${xpPct}%;background:${kid.color}"></div></div>
+    <span class="muted-sm">noch ${kid.levelNext - kid.levelInto} ⭐ bis Level ${kid.level + 1}</span>`;
+
+  const list = $("#shopList");
+  list.innerHTML = "";
+  const rewards = [...viewRewards()].sort((a, b) => a.cost - b.cost);
+
+  if (!rewards.length) {
+    list.innerHTML = `<p class="muted">Noch keine Belohnungen im Shop.<br>
+      Eltern können sie im Eltern-Bereich unter 🎁 anlegen.</p>`;
+    return;
+  }
+
+  for (const reward of rewards) {
+    const affordable = kid.stars >= reward.cost;
+    const item = document.createElement("div");
+    item.className = "shop-item" + (affordable ? "" : " locked");
+    item.innerHTML = `
+      <div class="shop-emoji">${reward.emoji}</div>
+      <div class="grow">
+        <div class="title">${escapeHtml(reward.title)}</div>
+        <div class="sub">⭐ ${reward.cost}</div>
+      </div>
+      <button type="button" class="btn ${affordable ? "btn-primary" : ""}" ${affordable ? "" : "disabled"}>
+        ${affordable ? "Einlösen" : `noch ${reward.cost - kid.stars} ⭐`}
+      </button>`;
+    if (affordable) {
+      item.querySelector("button").addEventListener("click", () => redeemReward(kid, reward));
+    }
+    list.appendChild(item);
+  }
+}
+
+async function redeemReward(kid, reward) {
+  if (!confirm(`${reward.emoji} „${reward.title}" für ${reward.cost} ⭐ einlösen?`)) return;
+  try {
+    await api("api/redeem", {
+      method: "POST",
+      body: JSON.stringify({ kidId: kid.id, rewardId: reward.id }),
+    });
+    toast(`${reward.emoji} Belohnung eingelöst – viel Spaß, ${kid.name}!`);
+    if (confettiEnabled()) fireConfetti();
+    await loadView();
+    renderShop();
+  } catch (err) {
+    toast(err.message || "Hoppla, das hat nicht geklappt 😕");
+  }
 }
 
 // ===== Navigation & Ansicht-Umschalter =====
@@ -435,6 +525,7 @@ async function openSettings() {
   }
   renderKidList();
   renderTaskAdmin();
+  renderRewardAdmin();
   $("#settingsDialog").showModal();
 }
 
@@ -698,8 +789,10 @@ document.querySelectorAll("#recPresets .chip").forEach((chip) => {
 
 document.querySelectorAll(".stepper-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    const input = $("#taskPoints");
-    input.value = Math.max(0, Math.min(100, (Number(input.value) || 0) + Number(btn.dataset.step)));
+    const input = btn.closest(".stepper").querySelector("input");
+    const min = Number(input.min) || 0;
+    const max = Number(input.max) || 100;
+    input.value = Math.max(min, Math.min(max, (Number(input.value) || 0) + Number(btn.dataset.step)));
   });
 });
 
@@ -765,6 +858,99 @@ $("#deleteTask").addEventListener("click", async () => {
   adminData = await api("api/admin");
   renderTaskAdmin();
   renderKidList();
+});
+
+// ===== Belohnungen verwalten =====
+
+function renderRewardAdmin() {
+  const list = $("#rewardList");
+  list.innerHTML = "";
+  if (!adminData.rewards.length) {
+    list.innerHTML = `<p class="muted">Noch keine Belohnungen angelegt –
+      z. B. „30 Min. Medienzeit" für 50 ⭐ oder „Kinoabend" für 200 ⭐.</p>`;
+  }
+  for (const reward of [...adminData.rewards].sort((a, b) => a.cost - b.cost)) {
+    const item = document.createElement("div");
+    item.className = "admin-item";
+    item.innerHTML = `
+      <div class="mini-avatar reward-avatar">${reward.emoji}</div>
+      <div class="grow">
+        <div class="title">${escapeHtml(reward.title)}</div>
+        <div class="sub">⭐ ${reward.cost}</div>
+      </div>
+      <span class="edit-hint">✏️</span>`;
+    item.addEventListener("click", () => openRewardForm(reward));
+    list.appendChild(item);
+  }
+
+  const section = $("#redemptionSection");
+  const redList = $("#redemptionList");
+  redList.innerHTML = "";
+  const redemptions = adminData.redemptions.slice(0, 20);
+  section.hidden = !redemptions.length;
+  for (const r of redemptions) {
+    const kid = adminData.kids.find((k) => k.id === r.kidId);
+    const when = r.ts ? new Date(r.ts).toLocaleDateString("de-DE", { day: "numeric", month: "short" }) : "";
+    const item = document.createElement("div");
+    item.className = "admin-item redemption-item";
+    item.innerHTML = `
+      <div class="mini-avatar" style="background:${kid?.color || "#888"}">${kid?.emoji || "❓"}</div>
+      <div class="grow">
+        <div class="title">${r.emoji} ${escapeHtml(r.title)}</div>
+        <div class="sub">${escapeHtml(kid?.name || "?")} · ${when} · −${r.cost} ⭐</div>
+      </div>
+      <button type="button" class="btn btn-sm undo-redemption" title="Rückgängig – Sterne zurückgeben">↩️</button>`;
+    item.querySelector(".undo-redemption").addEventListener("click", async () => {
+      if (!confirm(`Einlösung zurücknehmen? ${kid?.name || "Das Kind"} bekommt ${r.cost} ⭐ zurück.`)) return;
+      await api(`api/redemptions/${r.id}`, { method: "DELETE" });
+      adminData = await api("api/admin");
+      renderRewardAdmin();
+    });
+    redList.appendChild(item);
+  }
+}
+
+$("#addReward").addEventListener("click", () => openRewardForm(null));
+
+function openRewardForm(reward) {
+  editingRewardId = reward?.id || null;
+  $("#rewardFormTitle").textContent = reward ? "Belohnung bearbeiten" : "Belohnung hinzufügen";
+  $("#rewardTitle").value = reward?.title || "";
+  $("#rewardCost").value = reward?.cost ?? 50;
+  $("#deleteReward").hidden = !reward;
+  buildPicker($("#rewardEmojiGrid"), REWARD_EMOJIS, reward?.emoji || REWARD_EMOJIS[0], "emoji-option",
+    (v, el) => { el.textContent = v; });
+  $("#rewardDialog").showModal();
+  setTimeout(() => $("#rewardTitle").focus(), 50);
+}
+
+$("#rewardForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const payload = {
+    title: $("#rewardTitle").value.trim(),
+    emoji: $("#rewardEmojiGrid .active")?.dataset.value || REWARD_EMOJIS[0],
+    cost: Number($("#rewardCost").value) || 50,
+  };
+  try {
+    if (editingRewardId) {
+      await api(`api/rewards/${editingRewardId}`, { method: "PUT", body: JSON.stringify(payload) });
+    } else {
+      await api("api/rewards", { method: "POST", body: JSON.stringify(payload) });
+    }
+    $("#rewardDialog").close();
+    adminData = await api("api/admin");
+    renderRewardAdmin();
+  } catch (err) {
+    toast(err.message);
+  }
+});
+
+$("#deleteReward").addEventListener("click", async () => {
+  if (!confirm("Diese Belohnung wirklich löschen?")) return;
+  await api(`api/rewards/${editingRewardId}`, { method: "DELETE" });
+  $("#rewardDialog").close();
+  adminData = await api("api/admin");
+  renderRewardAdmin();
 });
 
 // ===== PIN ändern =====

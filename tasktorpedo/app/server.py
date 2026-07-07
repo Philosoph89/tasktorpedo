@@ -10,6 +10,7 @@ import json
 import os
 import re
 import threading
+import urllib.request
 import uuid
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,6 +38,8 @@ def default_data():
         "kids": [],
         "tasks": [],
         "completions": {},
+        "rewards": [],
+        "redemptions": [],
         "settings": {"pin": None},
     }
 
@@ -95,8 +98,8 @@ def completions_for(data, day_iso):
 
 
 def kid_points(data, kid_id):
-    """Gesamt- und Wochenpunkte aus den Erledigungs-Einträgen (robust gegen
-    gelöschte Aufgaben, weil Punkte im Eintrag gespeichert sind)."""
+    """Verdiente Punkte (gesamt + Woche) aus den Erledigungs-Einträgen (robust
+    gegen gelöschte Aufgaben, weil Punkte im Eintrag gespeichert sind)."""
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
     total = 0
@@ -111,6 +114,29 @@ def kid_points(data, kid_id):
             if d and week_start <= d <= today:
                 week += pts
     return total, week
+
+
+def kid_spent(data, kid_id):
+    """Für Belohnungen ausgegebene Sterne."""
+    return sum(
+        int(r.get("cost", 0))
+        for r in data["redemptions"]
+        if r.get("kidId") == kid_id
+    )
+
+
+def level_info(earned):
+    """Level aus allen jemals verdienten Sternen. Frühe Level kommen schnell
+    (50 ⭐), später wird es langsam teurer (max. 200 ⭐ pro Level). Ausgegebene
+    Sterne kosten kein Level – Belohnungen einlösen tut nie weh."""
+    level = 1
+    into = earned
+    need = 50
+    while into >= need:
+        into -= need
+        level += 1
+        need = min(200, 50 + (level - 1) * 20)
+    return {"level": level, "into": into, "next": need}
 
 
 def kid_streak(data, kid_id, until):
@@ -130,6 +156,32 @@ def kid_streak(data, kid_id, until):
     return streak
 
 
+def serialize_kid_stats(data, kid):
+    earned, week = kid_points(data, kid["id"])
+    lvl = level_info(earned)
+    return {
+        "id": kid["id"],
+        "name": kid["name"],
+        "emoji": kid.get("emoji", "🙂"),
+        "color": kid.get("color", "#6366f1"),
+        "stars": max(0, earned - kid_spent(data, kid["id"])),
+        "pointsTotal": earned,
+        "pointsWeek": week,
+        "level": lvl["level"],
+        "levelInto": lvl["into"],
+        "levelNext": lvl["next"],
+    }
+
+
+def serialize_reward(r):
+    return {
+        "id": r["id"],
+        "title": r["title"],
+        "emoji": r.get("emoji", "🎁"),
+        "cost": int(r.get("cost", 50)),
+    }
+
+
 def serialize_task(t, done_map):
     return {
         "id": t["id"],
@@ -147,22 +199,19 @@ def build_day_view(data, day):
     done_map = completions_for(data, day_iso)
     kids = []
     for kid in data["kids"]:
-        tasks = [
+        entry = serialize_kid_stats(data, kid)
+        entry["tasks"] = [
             serialize_task(t, done_map)
             for t in kid_day_tasks(data, kid["id"], day)
         ]
-        total, week = kid_points(data, kid["id"])
-        kids.append({
-            "id": kid["id"],
-            "name": kid["name"],
-            "emoji": kid.get("emoji", "🙂"),
-            "color": kid.get("color", "#6366f1"),
-            "tasks": tasks,
-            "pointsTotal": total,
-            "pointsWeek": week,
-            "streak": kid_streak(data, kid["id"], day),
-        })
-    return {"date": day_iso, "kids": kids, "hasPin": bool(data["settings"].get("pin"))}
+        entry["streak"] = kid_streak(data, kid["id"], day)
+        kids.append(entry)
+    return {
+        "date": day_iso,
+        "kids": kids,
+        "rewards": [serialize_reward(r) for r in data["rewards"]],
+        "hasPin": bool(data["settings"].get("pin")),
+    }
 
 
 def build_week_view(data, start):
@@ -171,30 +220,49 @@ def build_week_view(data, start):
     done_maps = [completions_for(data, d.isoformat()) for d in days]
     kids = []
     for kid in data["kids"]:
-        total, week = kid_points(data, kid["id"])
-        day_lists = []
-        for d, done_map in zip(days, done_maps):
-            tasks = [
+        entry = serialize_kid_stats(data, kid)
+        entry["days"] = [
+            [
                 serialize_task(t, done_map)
                 for t in kid_day_tasks(data, kid["id"], d)
             ]
-            day_lists.append(tasks)
-        kids.append({
-            "id": kid["id"],
-            "name": kid["name"],
-            "emoji": kid.get("emoji", "🙂"),
-            "color": kid.get("color", "#6366f1"),
-            "days": day_lists,
-            "pointsTotal": total,
-            "pointsWeek": week,
-            "streak": kid_streak(data, kid["id"], date.today()),
-        })
+            for d, done_map in zip(days, done_maps)
+        ]
+        entry["streak"] = kid_streak(data, kid["id"], date.today())
+        kids.append(entry)
     return {
         "start": start.isoformat(),
         "days": [d.isoformat() for d in days],
         "kids": kids,
+        "rewards": [serialize_reward(r) for r in data["rewards"]],
         "hasPin": bool(data["settings"].get("pin")),
     }
+
+
+def fire_ha_event(event, payload):
+    """Feuert ein Event auf dem Home-Assistant-Bus (via Supervisor-API).
+    Läuft im Hintergrund-Thread und scheitert still – lokal ohne HA gibt es
+    schlicht kein SUPERVISOR_TOKEN."""
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return
+
+    def _post():
+        try:
+            req = urllib.request.Request(
+                f"http://supervisor/core/api/events/{event}",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=5).close()
+        except Exception:
+            pass
+
+    threading.Thread(target=_post, daemon=True).start()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -284,7 +352,16 @@ class Handler(BaseHTTPRequestHandler):
                 data = load_data()
             if not self.check_pin(data):
                 return self.send_error_json("pin", 403)
-            self.send_json({"kids": data["kids"], "tasks": data["tasks"]})
+            self.send_json({
+                "kids": data["kids"],
+                "tasks": data["tasks"],
+                "rewards": data["rewards"],
+                "redemptions": sorted(
+                    data["redemptions"],
+                    key=lambda r: r.get("ts", ""),
+                    reverse=True,
+                ),
+            })
         elif route == "api/health":
             self.send_json({"ok": True})
         elif route.startswith("api/"):
@@ -342,6 +419,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_error_json("Mindestens ein Kind auswählen")
                 save_data(data)
                 self.send_json({"created": created}, 201)
+            elif route == "api/rewards":
+                if not self.check_pin(data):
+                    return self.send_error_json("pin", 403)
+                reward = self.validate_reward(body)
+                if reward is None:
+                    return
+                reward["id"] = new_id()
+                data["rewards"].append(reward)
+                save_data(data)
+                self.send_json(reward, 201)
+            elif route == "api/redeem":
+                self.handle_redeem(data, body)
             else:
                 self.send_error_json("not found", 404)
 
@@ -379,6 +468,18 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_json(task)
                 return self.send_error_json("not found", 404)
 
+            m = re.fullmatch(r"api/rewards/(\w+)", route)
+            if m:
+                for reward in data["rewards"]:
+                    if reward["id"] == m.group(1):
+                        updated = self.validate_reward(body)
+                        if updated is None:
+                            return
+                        reward.update(updated)
+                        save_data(data)
+                        return self.send_json(reward)
+                return self.send_error_json("not found", 404)
+
             self.send_error_json("not found", 404)
 
     def do_DELETE(self):
@@ -400,6 +501,20 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 task_id = m.group(1)
                 data["tasks"] = [t for t in data["tasks"] if t["id"] != task_id]
+                save_data(data)
+                return self.send_json({"ok": True})
+
+            m = re.fullmatch(r"api/rewards/(\w+)", route)
+            if m:
+                reward_id = m.group(1)
+                data["rewards"] = [r for r in data["rewards"] if r["id"] != reward_id]
+                save_data(data)
+                return self.send_json({"ok": True})
+
+            m = re.fullmatch(r"api/redemptions/(\w+)", route)
+            if m:
+                red_id = m.group(1)
+                data["redemptions"] = [r for r in data["redemptions"] if r["id"] != red_id]
                 save_data(data)
                 return self.send_json({"ok": True})
 
@@ -429,7 +544,57 @@ class Handler(BaseHTTPRequestHandler):
         if not entries:
             del data["completions"][day_iso]
         save_data(data)
+
+        if done:
+            kid = next((k for k in data["kids"] if k["id"] == task["kidId"]), None)
+            day = parse_date(day_iso)
+            day_tasks = kid_day_tasks(data, task["kidId"], day)
+            all_done = all(t["id"] in entries for t in day_tasks)
+            if kid:
+                fire_ha_event("tasktorpedo_task_done", {
+                    "kid": kid["name"],
+                    "task": task["title"],
+                    "category": task.get("category"),
+                    "points": int(task.get("points", 10)),
+                    "date": day_iso,
+                    "all_done": all_done,
+                })
+                if all_done:
+                    fire_ha_event("tasktorpedo_all_done", {
+                        "kid": kid["name"],
+                        "date": day_iso,
+                        "tasks": len(day_tasks),
+                    })
         self.send_json({"ok": True, "done": done})
+
+    def handle_redeem(self, data, body):
+        kid = next((k for k in data["kids"] if k["id"] == body.get("kidId")), None)
+        reward = next((r for r in data["rewards"] if r["id"] == body.get("rewardId")), None)
+        if kid is None or reward is None:
+            return self.send_error_json("not found", 404)
+        earned, _ = kid_points(data, kid["id"])
+        balance = earned - kid_spent(data, kid["id"])
+        cost = int(reward.get("cost", 0))
+        if balance < cost:
+            return self.send_error_json("Noch nicht genug Sterne gesammelt")
+        entry = {
+            "id": new_id(),
+            "kidId": kid["id"],
+            "rewardId": reward["id"],
+            "title": reward["title"],
+            "emoji": reward.get("emoji", "🎁"),
+            "cost": cost,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        }
+        data["redemptions"].append(entry)
+        save_data(data)
+        fire_ha_event("tasktorpedo_reward_redeemed", {
+            "kid": kid["name"],
+            "reward": reward["title"],
+            "cost": cost,
+            "stars_left": balance - cost,
+        })
+        self.send_json({"ok": True, "balance": balance - cost})
 
     def validate_kid(self, body):
         name = str(body.get("name") or "").strip()
@@ -443,6 +608,21 @@ class Handler(BaseHTTPRequestHandler):
             "name": name,
             "emoji": str(body.get("emoji") or "🙂")[:8],
             "color": color,
+        }
+
+    def validate_reward(self, body):
+        title = str(body.get("title") or "").strip()
+        if not title or len(title) > 60:
+            self.send_error_json("Name fehlt oder ist zu lang")
+            return None
+        try:
+            cost = max(1, min(10000, int(body.get("cost", 50))))
+        except (TypeError, ValueError):
+            cost = 50
+        return {
+            "title": title,
+            "emoji": str(body.get("emoji") or "🎁")[:8],
+            "cost": cost,
         }
 
     def validate_task(self, body):

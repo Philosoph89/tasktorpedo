@@ -247,6 +247,32 @@ body {
 }
 .badge.stars { color: var(--star); }
 .badge.streak { color: #f97316; }
+.badge.level { color: var(--primary); }
+
+button.badge.shop-open {
+  border: none;
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--star) 45%, transparent);
+  transition: transform 0.15s;
+}
+button.badge.shop-open:hover { transform: scale(1.08); }
+button.badge.shop-open:active { transform: scale(0.95); }
+
+/* XP-Balken (Level-Fortschritt) */
+.xp-bar {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.xp-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
 
 /* Fortschrittsring */
 .progress-ring { position: relative; width: 52px; height: 52px; flex-shrink: 0; }
@@ -740,7 +766,10 @@ body {
   padding: 5px;
   border-radius: 999px;
   margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   flex: 1;
   border: none;
@@ -753,6 +782,10 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .tab { font-size: 0.78rem; padding: 8px 6px; }
 }
 .tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 
@@ -817,6 +850,77 @@ body {
 }
 .switch input:checked + .slider { background: var(--primary); }
 .switch input:checked + .slider::before { transform: translateX(22px); }
+
+/* ===== Sterne-Shop ===== */
+
+.shop-balance {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.shop-balance .shop-stars {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--star);
+}
+
+.shop-level {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+.shop-level .xp-bar { flex: 1; margin-top: 0; }
+.shop-level .muted-sm {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.shop-list { display: flex; flex-direction: column; gap: 8px; }
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.shop-item.locked { opacity: 0.65; }
+.shop-item .shop-emoji {
+  width: 44px; height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  display: grid; place-items: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+.shop-item .grow { flex: 1; min-width: 0; }
+.shop-item .title { font-weight: 700; }
+.shop-item .sub { font-size: 0.8rem; font-weight: 700; color: var(--star); margin-top: 2px; }
+.shop-item .btn { padding: 8px 14px; font-size: 0.82rem; white-space: nowrap; }
+.shop-item .btn[disabled] { cursor: default; opacity: 0.7; transform: none; }
+
+.reward-avatar { background: color-mix(in srgb, var(--star) 18%, var(--surface)); }
+
+.section-title {
+  margin: 20px 0 10px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.redemption-item { cursor: default; }
+.redemption-item:hover { transform: none; }
+.btn-sm { padding: 7px 12px; font-size: 0.85rem; }
 
 /* ===== Confetti & Toast ===== */
 

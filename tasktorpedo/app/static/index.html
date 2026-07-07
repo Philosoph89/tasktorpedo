@@ -63,6 +63,7 @@
     <div class="tabs" role="tablist">
       <button class="tab active" data-tab="kids" role="tab">👧 Kinder</button>
       <button class="tab" data-tab="tasks" role="tab">📝 Aufgaben</button>
+      <button class="tab" data-tab="rewards" role="tab">🎁 Belohnungen</button>
       <button class="tab" data-tab="options" role="tab">🔧 Optionen</button>
     </div>
 
@@ -75,6 +76,17 @@
       <div class="task-filter" id="taskFilter"></div>
       <div id="taskList" class="admin-list"></div>
       <button class="btn btn-primary" id="addTask">+ Aufgabe hinzufügen</button>
+    </section>
+
+    <section class="tab-panel" id="panel-rewards" role="tabpanel" hidden>
+      <p class="muted">Wofür können die gesammelten Sterne eingelöst werden?
+      Kinder öffnen den Shop über ihr ⭐-Guthaben.</p>
+      <div id="rewardList" class="admin-list"></div>
+      <button class="btn btn-primary" id="addReward">+ Belohnung hinzufügen</button>
+      <div id="redemptionSection" hidden>
+        <h4 class="section-title">Zuletzt eingelöst</h4>
+        <div id="redemptionList" class="admin-list"></div>
+      </div>
     </section>
 
     <section class="tab-panel" id="panel-options" role="tabpanel" hidden>
@@ -189,6 +201,48 @@
       <button type="submit" class="btn btn-primary">Speichern</button>
     </div>
   </form>
+</dialog>
+
+<!-- Belohnung anlegen/bearbeiten -->
+<dialog id="rewardDialog" class="modal">
+  <form class="modal-body" id="rewardForm">
+    <h3 id="rewardFormTitle">Belohnung hinzufügen</h3>
+    <label class="field">
+      <span>Belohnung</span>
+      <input type="text" id="rewardTitle" maxlength="60" required placeholder="z. B. 30 Min. Medienzeit">
+    </label>
+    <label class="field">
+      <span>Symbol</span>
+    </label>
+    <div class="emoji-grid" id="rewardEmojiGrid"></div>
+    <label class="field">
+      <span>Kosten in Sternen</span>
+      <div class="stepper">
+        <button type="button" class="stepper-btn" data-step="-10">−</button>
+        <input type="number" id="rewardCost" min="1" max="10000" step="1" value="50">
+        <button type="button" class="stepper-btn" data-step="10">+</button>
+      </div>
+    </label>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-danger" id="deleteReward" hidden>Löschen</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Sterne-Shop (Kind-Ansicht) -->
+<dialog id="shopDialog" class="modal">
+  <div class="modal-body">
+    <div class="modal-header">
+      <h3 id="shopTitle">🎁 Sterne-Shop</h3>
+      <button class="icon-btn" data-close aria-label="Schließen">✕</button>
+    </div>
+    <div class="shop-balance" id="shopBalance"></div>
+    <div class="shop-level" id="shopLevel"></div>
+    <div id="shopList" class="shop-list"></div>
+  </div>
 </dialog>
 
 <!-- PIN ändern -->

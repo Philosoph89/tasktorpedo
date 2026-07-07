@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0 – 2026-07-07
+
+- 🎁 **Sterne-Shop**: Eltern legen Belohnungen an (Name, Symbol, Sternekosten),
+  Kinder lösen sie selbst ein – ein Tipp auf das ⭐-Guthaben öffnet den Shop.
+  Das Guthaben ist jetzt verdiente minus ausgegebene Sterne; Eltern sehen die
+  Einlöse-Historie und können Einlösungen rückgängig machen (↩️)
+- 🏅 **Level-System**: Level aus allen jemals verdienten Sternen mit
+  XP-Fortschrittsbalken in der Kinder-Karte – Belohnungen einlösen kostet
+  nie Level-Fortschritt
+- 🏠 **Home-Assistant-Events**: das Add-on feuert jetzt Events auf dem
+  HA-Event-Bus für Automationen (z. B. TTS-Durchsage, Licht-Show):
+  `tasktorpedo_task_done`, `tasktorpedo_all_done`,
+  `tasktorpedo_reward_redeemed` – Beispiele in der Dokumentation
+
 ## 1.2.0 – 2026-07-06
 
 - ☕ Neue Option „Display wach halten“ für Kiosk-Geräte (z. B. Echo Show,

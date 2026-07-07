@@ -15,8 +15,13 @@ Streak-Zähler und Konfetti, wenn alles geschafft ist.
 - 📆 Tages- und Wochenansicht mit einem Klick umschaltbar
 - 🔁 Wiederholungen: täglich, Mo–Fr, Wochenende, einzelne Tage oder einmalig
 - ⭐ Sterne-Punktesystem mit Wochen- und Gesamtzähler
+- 🎁 Sterne-Shop: Eltern legen Belohnungen an, Kinder lösen ihr Guthaben
+  selbst ein (mit Einlöse-Historie und Rückgängig-Funktion)
+- 🏅 Level-System mit XP-Balken – Belohnungen einlösen kostet nie Level
 - 🔥 Streak-Anzeige für aufeinanderfolgende „Alles erledigt“-Tage
 - 🎉 Konfetti-Feier, wenn ein Kind alle Aufgaben geschafft hat
+- 🏠 Events auf dem Home-Assistant-Bus für eigene Automationen
+  (Aufgabe erledigt, alles geschafft, Belohnung eingelöst)
 - 🔒 Eltern-Bereich mit optionaler PIN
 - ☕ Kiosk-Modus „Display wach halten“ für Echo Show & Wandtablets
 - 🌙 Automatischer Dark Mode
