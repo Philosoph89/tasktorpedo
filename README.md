@@ -1,39 +1,41 @@
-# 🚀 TaskTorpedo – Home Assistant Add-on Repository
+# 🚀 TaskTorpedo
 
-Aufgabenplaner für Kinder als Home Assistant Add-on. Details siehe
-[tasktorpedo/README.md](tasktorpedo/README.md).
+**Aufgabenplaner für Kinder (ca. 8–12 Jahre) als Home Assistant Add-on.**
 
-## Repository-Struktur
+Jedes Kind bekommt eine eigene Spalte mit seinen Aufgaben des Tages – zeitlich
+sortiert, mit großen Häkchen zum Abhaken. Kategorien für Haushalt 🧹,
+Schule 📚, Freizeit ⚽ und Termine 📅, dazu Sterne als Belohnung,
+Streak-Zähler und Konfetti, wenn alles geschafft ist.
 
-```
-├── repository.yaml          # macht diesen Ordner zum HA-Add-on-Repository
-└── tasktorpedo/             # das Add-on
-    ├── config.yaml          # Add-on-Manifest (Ingress, Architekturen, …)
-    ├── Dockerfile           # Alpine-Base + Python 3, keine weiteren Abhängigkeiten
-    ├── build.yaml           # Base-Images je Architektur
-    ├── icon.png / logo.png  # Store-Grafiken
-    ├── DOCS.md              # Anleitung (im Add-on-Store sichtbar)
-    └── app/
-        ├── server.py        # HTTP-Server + REST-API (nur Python-Stdlib)
-        └── static/          # Frontend (Vanilla JS, kein Build-Schritt)
-```
+## Features
 
-## Installation in Home Assistant
+- 👧👦 Beliebig viele Kinder mit Avatar-Emoji und Farbe
+- ✅ Große, touch-freundliche Aufgabenkarten – ideal fürs Wandtablet
+- 🕐 Zeitliche Sortierung, Aufgaben ohne Uhrzeit unter „Irgendwann heute“
+- 📆 Tages- und Wochenansicht mit einem Klick umschaltbar
+- 🔁 Wiederholungen: täglich, Mo–Fr, Wochenende, einzelne Tage oder einmalig
+- ⭐ Sterne-Punktesystem mit Wochen- und Gesamtzähler
+- 🎁 Sterne-Shop: Eltern legen Belohnungen an, Kinder lösen ihr Guthaben
+  selbst ein (mit Einlöse-Historie und Rückgängig-Funktion)
+- 🏅 Level-System mit XP-Balken – Belohnungen einlösen kostet nie Level
+- 🔥 Streak-Anzeige für aufeinanderfolgende „Alles erledigt“-Tage
+- 🎉 Konfetti-Feier, wenn ein Kind alle Aufgaben geschafft hat
+- 🏠 Events auf dem Home-Assistant-Bus für eigene Automationen
+  (Aufgabe erledigt, alles geschafft, Belohnung eingelöst)
+- 🔒 Eltern-Bereich mit optionaler PIN
+- ☕ Kiosk-Modus „Display wach halten“ für Echo Show & Wandtablets
+- 🌙 Automatischer Dark Mode
+- 📱 Responsive: Desktop, Tablet und Smartphone
 
-1. Dieses Repository auf GitHub veröffentlichen (öffentlich oder mit Zugriff
-   für die HA-Instanz).
-2. In Home Assistant: **Einstellungen → Add-ons → Add-on Store → ⋮ →
-   Repositories** → GitHub-URL eintragen.
-3. **TaskTorpedo** installieren, starten – fertig. Die App erscheint in der
-   Seitenleiste.
+## Installation
 
-Alternativ für lokale Tests: den Ordner `tasktorpedo/` nach
-`/addons/tasktorpedo` auf der HA-Instanz kopieren (Samba/SSH-Add-on) und im
-Store unter „Lokale Add-ons“ installieren.
+1. In Home Assistant: **Einstellungen → Add-ons → Add-on Store**
+2. Menü (⋮) → **Repositories** → URL dieses Repositories hinzufügen
+3. **TaskTorpedo** installieren und starten
+4. Über die Seitenleiste (🚀 TaskTorpedo) öffnen
 
-## Lokal entwickeln (ohne Home Assistant)
+## Technik
 
-```bash
-DATA_DIR=/tmp/tt-data PORT=8099 python3 tasktorpedo/app/server.py
-# → http://localhost:8099
-```
+- Backend: Python 3, nur Standardbibliothek – kein pip, kein npm
+- Frontend: Vanilla JS Single-Page-App, ausgeliefert über Home Assistant Ingress
+- Daten: JSON in `/data` (persistiert über Updates und Neustarts, atomare Writes)
